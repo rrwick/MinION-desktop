@@ -81,7 +81,7 @@ for bin_dir in $bin_dirs; do
     b=$(basename $bin_dir)
     out_dir="$output_dir"/"$b"
     guppy_basecaller --config "$config" --device auto -i "$bin_dir" -s "$out_dir"
-    guppy_barcoder -i "$out_dir" -s "$out_dir" --arrangements_files barcode_arrs_nb.cfg
+    guppy_barcoder -i "$out_dir" -s "$out_dir" --arrangements_files barcode_arrs_nb.cfg --min_score 50
 
     out_file="$out_dir"/"$b"_untrimmed.fastq.gz
     printf "\nFiltering reads by barcode\n"
