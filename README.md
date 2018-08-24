@@ -1,6 +1,8 @@
-# MinION desktop
+# Holt Lab MinION desktop
 
-This repo contains scripts and programs for the Holt Lab's MinION-running computer. This computer is a fairly beefy desktop that (thanks to its GTX 1080 GPU) can demultiplex with Deepbinner and basecall with Guppy.
+This repo contains scripts and programs for the Holt Lab's MinION-running computer. This computer is a fairly beefy desktop that (thanks to its GTX 1080 GPU) can demultiplex with [Deepbinner](https://github.com/rrwick/Deepbinner) and basecall with Guppy.
+
+<p align="center"><img src="desktop.jpg" alt="Deepbinner" width="40%"></p>
 
 The contents of these repo are custom-tailored to our setup and workflow (i.e. I make no promises that they may work for you), but I made them publicly available in case others are interested!
 
@@ -57,9 +59,9 @@ Type=Application
 
 ### fastq_count
 
-This is a little C program that reports some basic stats on a fastq file: the number of reads, the total size (in bp) and the N50 size. I threw it together using [this example](https://bioinformatics.stackexchange.com/a/937) as a starting point. Because it uses the wonderful[kseq.h](http://attractivechaos.github.io/klib/#Kseq%3A%20stream%20buffer%20and%20FASTA%2FQ%20parser) header file, it's very fast.
+This is a little C program that reports some basic stats on a fastq file: the number of reads, the total size (in bp) and the N50 size. I threw it together using [this example](https://bioinformatics.stackexchange.com/a/937) as a starting point. Because it uses the wonderful [kseq.h](http://attractivechaos.github.io/klib/#Kseq%3A%20stream%20buffer%20and%20FASTA%2FQ%20parser) header file, it's very fast.
 
-To build it, just run `make`.
+To build it, just run `make` in this repo's directory.
 
 
 
