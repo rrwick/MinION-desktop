@@ -29,6 +29,7 @@ Comment=Start running Deepbinner on MinKNOW's reads
 Encoding=UTF-8
 Terminal=true
 Type=Application
+Categories=Application
 ```
 
 
@@ -54,7 +55,34 @@ Comment=Basecall Deepbinner's reads using Guppy
 Encoding=UTF-8
 Terminal=true
 Type=Application
+Categories=Application
 ```
+
+
+
+### tarball_reads.sh
+
+This script looks through the demultiplexed fast5 files and:
+1) Parititions them into subdirectories of 4000 reads each.
+2) Tarballs each subdirectory into a `tar.gz` file.
+3) Verifies that nothing went wrong when making the tarball, then deletes the files.
+
+After it's finished, transferring the reads to our storage server is a lot easier!
+
+Like with the other scripts, this got an Ubuntu desktop file:
+```
+[Desktop Entry]
+Version=1.0
+Exec=/home/holt-ont/MinION-desktop/tarball_reads.sh
+Name=Tarball reads
+GenericName=Tarball reads
+Comment=Compress reads into tar.gz files
+Encoding=UTF-8
+Terminal=true
+Type=Application
+Categories=Application
+```
+
 
 
 ### fastq_count
