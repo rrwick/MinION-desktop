@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-
+This script is for running Guppy in real time during a MinION run. It will
+* wait for new fast5s to appear
+* run Guppy on small batches
+* consolidate basecalled reads into one file per barcode
+* display statistics like barcode distribution and translocation speed
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 General Public License as published by the Free Software Foundation, either version 3 of the
@@ -20,13 +24,23 @@ import time
 
 
 def get_arguments():
-    parser = argparse.ArgumentParser(description='Basecall reads in real time with Guppy')
+    parser = argparse.ArgumentParser(description='Basecall reads in real time with Guppy',
+                                     add_help=False)
 
-    parser.add_argument('--batch_size', type=int, required=False, default=10,
-                        help='Number of fast5 files to basecall per batch')
-    parser.add_argument('--stop_time', type=int, required=False, default=30,
-                        help="The script will quit when it hasn't seen a new fast5 file for this "
-                             "many minutes")
+    required = parser.add_argument_group('Required')
+    required.add_argument('--barcodes', type=str, required=True,
+                          help='Which barcodes are used ("1-12", "13-24", "1-24" or "none")')
+    required.add_argument('--model', type=str, required=True,
+                          help='Which basecalling model to use ("fast", "hac" or "kp")')
+
+    options = parser.add_argument_group('Options')
+    options.add_argument('--batch_size', type=int, required=False, default=10,
+                         help='Number of fast5 files to basecall per batch')
+    options.add_argument('--stop_time', type=int, required=False, default=30,
+                         help="The script will quit when it hasn't seen a new fast5 file for this "
+                              "many minutes")
+    options.add_argument('-h', '--help', action='help',
+                         help='Show this help message and exit')
 
     args = parser.parse_args()
     return args
@@ -34,15 +48,18 @@ def get_arguments():
 
 def main():
     args = get_arguments()
+    check_arguments(args)
     check_current_directory()
     batch_number = get_current_batch_number()
+    make_fastq_directory()
 
     minutes_since_last_read = 0.0
     waiting = False
 
     while True:
         if minutes_since_last_read >= args.stop_time:
-            print('\nNo new reads for {} minutes - stopping script'.format(args.stop_time))
+            print_stop_message(args.stop_time)
+            print('\nNo new reads for {} minutes - stopping now. Bye!'.format(args.stop_time))
             break
 
         new_fast5s = check_for_reads(args.batch_size)
@@ -64,9 +81,11 @@ def main():
             continue
 
 
-
-
-
+def check_arguments(args):
+    if args.barcodes not in ['1-12', '13-24', '1-24', 'none']:
+        sys.exit('Error: --barcodes must be "1-12", "13-24", "1-24" or "none"')
+    if args.model not in ['fast', 'hac', 'kp']:
+        sys.exit('Error: --model must be "fast", "hac" or "kp"')
 
 
 def check_current_directory():
@@ -77,6 +96,11 @@ def check_current_directory():
 def get_current_batch_number():
     # TODO: see if some basecalling already exists, and if so, return the next available batch number.
     return 1
+
+
+def make_fastq_directory():
+    # TODO: make fastq directory (if it doesn't already exist)
+    pass
 
 
 def check_for_reads(batch_size):
