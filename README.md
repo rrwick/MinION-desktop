@@ -8,88 +8,28 @@ The contents of these repo are custom-tailored to our setup and workflow (i.e. I
 
 
 
+
+### basecall.py
+
+This is the script we use to do real time basecalling. I.e. we run MinKNOW with live basecalling turned _off_ and use this script to do Guppy basecalling during the run. This gives a few advantages over live basecalling in MinKNOW:
+
+* It lets us do GPU basecalling (much faster than using the CPU).
+* It lets us use Guppy features not yet present in MinKNOW (like demultiplexing and barcode trimming).
+* It concatenates the results so we get one final fastq file per barcode bin.
+
+
+
+### fast_count
+
+This is a little C program that reports some basic stats on a fastq/fasta file: the number of reads, the total size (in bp) and the N50 size. I threw it together using [this example](https://bioinformatics.stackexchange.com/a/937) as a starting point. Because it uses the wonderful [kseq.h](http://attractivechaos.github.io/klib/#Kseq%3A%20stream%20buffer%20and%20FASTA%2FQ%20parser) header file, it's very fast.
+
+To build it, just run `make` in this repo's directory.
+
+
+
 ### Setup
 
 The [setup.md](setup.md) file contains my crude notes on setting up the software on the desktop. They are not exhaustive and some of the steps are applicable only to our computer/environment.
-
-
-
-### start_deepbinner.sh
-
-The [start_deepbinner.sh](start_deepbinner.sh) script can be run during a MinION run to demultiplex the reads in real time.
-
-To make it easy to run, I made this desktop file for the Ubuntu desktop:
-```
-[Desktop Entry]
-Version=1.0
-Exec=/home/holt-ont/MinION-desktop/start_deepbinner.sh
-Name=Start Deepbinner
-GenericName=Start Deepbinner
-Comment=Start running Deepbinner on MinKNOW's reads
-Encoding=UTF-8
-Terminal=true
-Type=Application
-Categories=Application
-```
-
-
-
-### basecall_reads.sh
-
-The [basecall_reads.sh](basecall_reads.sh) script is intended to be executed after a run finishes. It does the following steps:
-* Basecalls each of Deepbinner's barcode directories using Guppy.
-* Runs Guppy's barcoder and saves reads where Deepbinner and Guppy agree on the barcode (using the [filter_by_guppy_barcode.py](filter_by_guppy_barcode.py) script).
-* Runs Porechop on the reads (only for simple adapter-trimming, not demultiplexing).
-* Saves some read stats to file using the `fastq_count` program (more details below).
-
-This script takes only one argument: the flowcell type. It must be `R9.4`, `R9.4.1` or `R9.5`.
-
-To make this script easy to run, I made a few desktop files (one for each flowcell type) to put on the Ubuntu desktop that look like this:
-```
-[Desktop Entry]
-Version=1.0
-Exec=/home/holt-ont/MinION-desktop/basecall_reads.sh R9.4.1
-Name=Basecall reads R9.4.1
-GenericName=Basecall reads R9.4.1
-Comment=Basecall Deepbinner's reads using Guppy
-Encoding=UTF-8
-Terminal=true
-Type=Application
-Categories=Application
-```
-
-
-
-### tarball_reads.sh
-
-This script looks through the demultiplexed fast5 files and:
-1) Parititions them into subdirectories of 4000 reads each.
-2) Tarballs each subdirectory into a `tar.gz` file.
-3) Verifies that nothing went wrong when making the tarball, then deletes the files.
-
-After it's finished, transferring the reads to our storage server is a lot easier!
-
-Like with the other scripts, this got an Ubuntu desktop file:
-```
-[Desktop Entry]
-Version=1.0
-Exec=/home/holt-ont/MinION-desktop/tarball_reads.sh
-Name=Tarball reads
-GenericName=Tarball reads
-Comment=Compress reads into tar.gz files
-Encoding=UTF-8
-Terminal=true
-Type=Application
-Categories=Application
-```
-
-
-
-### fastq_count
-
-This is a little C program that reports some basic stats on a fastq file: the number of reads, the total size (in bp) and the N50 size. I threw it together using [this example](https://bioinformatics.stackexchange.com/a/937) as a starting point. Because it uses the wonderful [kseq.h](http://attractivechaos.github.io/klib/#Kseq%3A%20stream%20buffer%20and%20FASTA%2FQ%20parser) header file, it's very fast.
-
-To build it, just run `make` in this repo's directory.
 
 
 
