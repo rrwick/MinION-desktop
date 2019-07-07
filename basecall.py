@@ -20,8 +20,10 @@ see <https://www.gnu.org/licenses/>.
 
 import argparse
 import collections
+import datetime
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -58,7 +60,6 @@ def get_arguments():
                           help='Input directory (will be searched recursively for fast5s)')
     required.add_argument('-o', '--out_dir', type=pathlib.Path, required=True,
                           help='Output directory')
-
     required.add_argument('--barcodes', type=str, required=True,
                           help='Which barcodes to use ({})'.format(join_with_or(BARCODING)))
     required.add_argument('--model', type=str, required=True,
@@ -68,9 +69,11 @@ def get_arguments():
     options = parser.add_argument_group('Options')
     options.add_argument('--batch_size', type=int, required=False, default=10,
                          help='Number of fast5 files to basecall per batch')
-    options.add_argument('--stop_time', type=int, required=False, default=30,
-                         help="The script will quit when it hasn't seen a new fast5 file for this "
+    options.add_argument('--stop_time', type=int, required=False, default=60,
+                         help="Automatically stop when a new fast5 file hasn't been seen for this "
                               "many minutes")
+    options.add_argument('--cpu', action='store_true',
+                         help='Use the CPU for basecalling (default: use the GPU)')
     options.add_argument('-h', '--help', action='help',
                          help='Show this help message and exit')
 
@@ -83,6 +86,7 @@ def main():
     check_python_version()
     args = get_arguments()
     check_guppy_version()
+    make_output_directory(args.out_dir)
 
     try:
         minutes_since_last_read, waiting = 0.0, False
@@ -93,8 +97,7 @@ def main():
 
             new_fast5s = check_for_reads(args.batch_size, args.in_dir, args.out_dir)
             if new_fast5s:
-                print_found_read_message(new_fast5s)
-                basecall_reads(new_fast5s, args.barcodes, args.model, args.out_dir)
+                basecall_reads(new_fast5s, args.barcodes, args.model, args.cpu, args.out_dir)
                 print_summary_info(args.barcodes)
                 minutes_since_last_read, waiting = 0.0, False
 
@@ -111,10 +114,12 @@ def main():
 
 def check_arguments(args):
     barcode_choices = list(BARCODING.keys())
+    args.barcodes = args.barcodes.lower()
     if args.barcodes not in barcode_choices:
         sys.exit('Error: valid --barcodes choices are: {}'.format(join_with_or(barcode_choices)))
 
     model_choices = list(BASECALLING.keys())
+    args.model = args.model.lower()
     if args.model not in model_choices:
         sys.exit('Error: valid --model choices are: {}'.format(join_with_or(model_choices)))
 
@@ -129,7 +134,6 @@ def check_arguments(args):
 
     if args.out_dir.is_file():
         sys.exit('Error: {} is a file (must be a directory)'.format(args.out_dir))
-    args.out_dir.mkdir(parents=True, exist_ok=True)
 
 
 def check_for_reads(batch_size, in_dir, out_dir):
@@ -157,9 +161,10 @@ def add_to_already_basecalled(fast5s, out_dir):
             already_basecalled.write('\n')
 
 
-def print_found_read_message(new_fast5s):
-    plural = '' if len(new_fast5s) == 1 else 's'
-    print('\nFound {} new read{}'.format(len(new_fast5s), plural))
+def print_basecalling_message():
+    print('\n\n\n')
+    print('RUNNING GUPPY BASECALLING')
+    print('-------------------------')
 
 
 def print_stop_message(stop_time):
@@ -174,42 +179,67 @@ def print_waiting_message(waiting):
         print('Waiting for new reads (Ctrl-C to quit)', end='', flush=True)
 
 
-def basecall_reads(new_fast5s, barcodes, model, out_dir):
+def basecall_reads(new_fast5s, barcodes, model, cpu, out_dir):
+    print_basecalling_message()
     with tempfile.TemporaryDirectory() as temp_dir:
-        print('created temporary directory', temp_dir)  # TEMP
+        # print('Creating temporary directory: {}\n'.format(temp_dir))
         temp_in = pathlib.Path(temp_dir) / 'in'
         temp_out = pathlib.Path(temp_dir) / 'out'
         copy_reads_to_temp_in(new_fast5s, temp_in)
-
-        guppy_command = get_guppy_command(temp_in, temp_out, barcodes, model)
-        # TODO: run Guppy
-
-        # TODO: merge results from temp dir to final out dir
-
+        guppy_command = get_guppy_command(temp_in, temp_out, barcodes, model, cpu)
+        execute_with_output(guppy_command)
+        merge_results(temp_out, out_dir, barcodes)
     add_to_already_basecalled(new_fast5s, out_dir)
-    print()
 
 
 def copy_reads_to_temp_in(new_fast5s, temp_in):
     temp_in.mkdir()
+    plural = '' if len(new_fast5s) == 1 else 's'
+    print('Read{} to be basecalled:'.format(plural))
     for f in new_fast5s:
         shutil.copy(str(f), str(temp_in))
-        print('copying {} to {}'.format(str(f), str(temp_in)))  # TEMP
+        print('    {}'.format(str(f)))
+    print()
 
 
 def print_summary_info(barcodes):
-    # TODO: translocation speed
-
+    translocation_speed_summary()
     if barcodes != 'none':
-        # TODO: barcode distribution
-        pass
+        barcode_distribution_summary()
+    overall_summary()
 
 
-def get_guppy_command(in_dir, out_dir, barcodes, model):
+def translocation_speed_summary():
+    pass
+    # TODO: read through sequencing_summary.txt file, getting the following for each read:
+    #       run_id, start_time, duration, sequence_length_template
+    # TODO: look at the fast5 files and get the exp_start_time for each run_id
+    # TODO: use the run exp_start_time and each read's info to build a table of read times and
+    #       translation speeds
+    # TODO: draw an ASCII plot showing the mean translocation speeds for time windows
+
+
+def barcode_distribution_summary():
+    pass
+    # TODO: read through sequencing_summary.txt file, getting the following for each read:
+    #       sequence_length_template, barcode_arrangement
+    # TODO: for each barcode, draw an ASCII bar plot for the number of bases and the N50 read size
+    # TODO: print the classified vs unclassified ratio
+
+
+def overall_summary():
+    pass
+    # TODO: read through sequencing_summary.txt file, getting the following for each read:
+    #       sequence_length_template
+    # TODO: print the number of reads, total bases and N50 read length
+
+
+def get_guppy_command(in_dir, out_dir, barcodes, model, cpu):
     guppy_command = ['guppy_basecaller',
                      '--input_path', str(in_dir),
-                     '--save_path', str(out_dir),
-                     '--device', 'auto']
+                     '--save_path', str(out_dir)]
+    if not cpu:
+        guppy_command += ['--device', 'auto']
     guppy_command += BASECALLING[model]
     guppy_command += BARCODING[barcodes]
     return guppy_command
@@ -333,6 +363,110 @@ def get_colours_from_tput():
         return int(subprocess.check_output(['tput', 'colors']).decode().strip())
     except (ValueError, subprocess.CalledProcessError, FileNotFoundError, AttributeError):
         return 1
+
+
+def execute_with_output(cmd):
+    """
+    Run a command and display its output.
+    https://stackoverflow.com/a/4417735/2438989
+    """
+    print_formatted_guppy_command(cmd)
+    print()
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    for c in iter(lambda: p.stdout.read(1), b''):
+        print(c.decode(), end='', flush=True)
+    p.stdout.close()
+    return_code = p.wait()
+    print()
+    if return_code:
+        raise subprocess.CalledProcessError(return_code, cmd)
+
+
+def print_formatted_guppy_command(cmd):
+    cmd = ' '.join(cmd)
+    cmd = cmd.replace('--save_path', '\\\n                 --save_path')
+    cmd = cmd.replace('--config', '\\\n                 --config')
+    cmd = cmd.replace('--model', '\\\n                 --model')
+    cmd = cmd.replace('--barcode_kits', '\\\n                 --barcode_kits')
+    print(cmd)
+
+
+def merge_results(temp_out, out_dir, barcodes):
+    log_dir = out_dir / 'guppy_logs'
+    log_filename = None
+    for filename in temp_out.glob('**/guppy_basecaller_log*'):
+        shutil.copy(str(filename), str(log_dir))
+        log_filename = filename
+
+    telemetry_dir = out_dir / 'guppy_telemetry'
+    timestamp = get_timestamp(log_filename)
+    for filename in temp_out.glob('**/sequencing_telemetry.js'):
+        new_filename = telemetry_dir / 'sequencing_telemetry-{}.js'.format(timestamp)
+        shutil.copyfile(str(filename), str(new_filename))
+
+    for filename in temp_out.glob('**/sequencing_summary.txt'):
+        destination_filename = out_dir / 'sequencing_summary.txt'
+        merge_summary(filename, destination_filename)
+
+    for filename in temp_out.glob('**/*.fastq'):
+        destination_filename = get_destination_filename(barcodes, out_dir, filename)
+        merge_fastq(filename, destination_filename)
+
+
+def get_destination_filename(barcodes, out_dir, source_filename):
+    if barcodes == 'none':
+        return str(out_dir / 'reads.fastq')
+    else:
+        match = re.search(r'barcode\d\d', str(source_filename))
+        if match:
+            barcode = match.group(0)
+        else:
+            barcode = 'unclassified'
+        return str(out_dir / (barcode + '.fastq'))
+
+
+def merge_fastq(source_filename, destination_filename):
+    # print('Merging contents of {} into {}'.format(source_filename, destination_filename))
+    destination_filename = str(destination_filename)  # path to str
+    with open(source_filename, 'rt') as source:
+        with open(destination_filename, 'at') as destination:
+            for line in source:
+                destination.write(line)
+
+
+def merge_summary(source_filename, destination_filename):
+    # print('Merging contents of {} into {}'.format(source_filename, destination_filename))
+    include_header = not destination_filename.is_file()
+    destination_filename = str(destination_filename)  # path to str
+    with open(source_filename, 'rt') as source:
+        with open(destination_filename, 'at') as destination:
+            for line in source:
+                if not include_header and line.startswith('filename'):
+                    continue
+                destination.write(line)
+
+
+def get_timestamp(log_filename):
+    """
+    Tries to get a timestamp from the log filename so the telemetry filename can be made to match.
+    But if it can't, it will just use the current timestamp.
+    """
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    if log_filename is not None:
+        match = re.search(r'\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d', str(log_filename))
+        if match:
+            timestamp = match.group(0)
+    return timestamp
+
+
+def make_output_directory(out_dir):
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    log_dir = out_dir / 'guppy_logs'
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    telemetry_dir = out_dir / 'guppy_telemetry'
+    telemetry_dir.mkdir(parents=True, exist_ok=True)
 
 
 if __name__ == '__main__':
