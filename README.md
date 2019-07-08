@@ -16,7 +16,12 @@ This is the script we use to do real time basecalling. I.e. we run MinKNOW with 
 * It lets us do GPU basecalling (much faster than using the CPU).
 * It lets us use Guppy features not yet present in MinKNOW (like demultiplexing and barcode trimming).
 * It concatenates the results so we get one final fastq file per barcode bin.
+* It displays barcode distribution and translocation speed stats as it goes.
 
+It needs to be run with the input directory (where fast5s are deposited), an output directory, which barcodes were used and which basecalling model to use:
+```
+basecall.py -i fast5 -o fastq --barcodes native_1-12 --model r9.4_hac
+```
 
 
 ### fast_count

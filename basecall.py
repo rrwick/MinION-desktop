@@ -21,10 +21,13 @@ see <https://www.gnu.org/licenses/>.
 import argparse
 import collections
 import datetime
+import dateutil.parser
+import h5py
 import os
 import pathlib
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -74,6 +77,9 @@ def get_arguments():
                               "many minutes")
     options.add_argument('--cpu', action='store_true',
                          help='Use the CPU for basecalling (default: use the GPU)')
+    options.add_argument('--trans_window', type=int, required=False, default=60,
+                         help='The time window size (in minutes) for the translocation speed '
+                              'summary')
     options.add_argument('-h', '--help', action='help',
                          help='Show this help message and exit')
 
@@ -98,7 +104,7 @@ def main():
             new_fast5s = check_for_reads(args.batch_size, args.in_dir, args.out_dir)
             if new_fast5s:
                 basecall_reads(new_fast5s, args.barcodes, args.model, args.cpu, args.out_dir)
-                print_summary_info(args.barcodes)
+                print_summary_info(args.out_dir, args.barcodes, new_fast5s, args.trans_window)
                 minutes_since_last_read, waiting = 0.0, False
 
             else:  # no new reads
@@ -162,9 +168,9 @@ def add_to_already_basecalled(fast5s, out_dir):
 
 
 def print_basecalling_message():
-    print('\n\n\n')
+    print('\n\n\n\n\n')
     print('RUNNING GUPPY BASECALLING')
-    print('-------------------------')
+    print('------------------------------------------------------------')
 
 
 def print_stop_message(stop_time):
@@ -176,13 +182,12 @@ def print_waiting_message(waiting):
     if waiting:
         print('.', end='', flush=True)
     else:
-        print('Waiting for new reads (Ctrl-C to quit)', end='', flush=True)
+        print('\n\nWaiting for new reads (Ctrl-C to quit)', end='', flush=True)
 
 
 def basecall_reads(new_fast5s, barcodes, model, cpu, out_dir):
     print_basecalling_message()
     with tempfile.TemporaryDirectory() as temp_dir:
-        # print('Creating temporary directory: {}\n'.format(temp_dir))
         temp_in = pathlib.Path(temp_dir) / 'in'
         temp_out = pathlib.Path(temp_dir) / 'out'
         copy_reads_to_temp_in(new_fast5s, temp_in)
@@ -202,36 +207,155 @@ def copy_reads_to_temp_in(new_fast5s, temp_in):
     print()
 
 
-def print_summary_info(barcodes):
-    translocation_speed_summary()
+def print_summary_info(out_dir, barcodes, new_fast5s, trans_window):
+    translocation_speed_summary(out_dir, new_fast5s, trans_window)
     if barcodes != 'none':
-        barcode_distribution_summary()
-    overall_summary()
+        barcode_distribution_summary(out_dir, barcodes)
+    overall_summary(out_dir)
 
 
-def translocation_speed_summary():
-    pass
-    # TODO: read through sequencing_summary.txt file, getting the following for each read:
-    #       run_id, start_time, duration, sequence_length_template
-    # TODO: look at the fast5 files and get the exp_start_time for each run_id
-    # TODO: use the run exp_start_time and each read's info to build a table of read times and
-    #       translation speeds
+def translocation_speed_summary(out_dir, new_fast5s, time_window):
+    print('\n\n\n')
+    print('TRANSLOCATION SPEED')
+    print('------------------------------------------------------------')
+    data = read_sequencing_summary(out_dir, ['run_id', 'start_time', 'duration',
+                                             'sequence_length_template', 'mean_qscore_template'])
+    run_ids = set(x[0] for x in data)
+    run_start_times = {r: get_run_start_time(r, new_fast5s) for r in run_ids}
+    earliest_start_time = min(run_start_times.values())
+    read_trans_speeds = []
+    max_time = 0.0
+    for run_id, start_time, duration, length, qscore in data:
+        start_time, duration, length, qscore = \
+            float(start_time), float(duration), int(length), float(qscore)
+        trans_speed = length / duration
+        read_time = (run_start_times[run_id] + datetime.timedelta(seconds=start_time) -
+                     earliest_start_time).total_seconds() / 60.0
+        max_time = max(max_time, read_time)
+        read_trans_speeds.append((read_time, trans_speed, qscore))
+
+    print('Time window     Speed    Qscore')
+    window_start, window_end = 0, time_window
+    while window_start < max_time:
+        window_data = [x for x in read_trans_speeds if window_start <= x[0] < window_end]
+        window_count = len(window_data)
+
+        if window_count > 0:
+            median_speed = statistics.median([x[1] for x in window_data])
+            median_speed = '{:5.1f}'.format(median_speed)
+            median_qscore = statistics.median([x[2] for x in window_data])
+            median_qscore = '{:4.1f}'.format(median_qscore)
+        else:
+            median_speed, median_qscore = '', ''
+
+        print('{:4d} - {:4d}     {}      {}'.format(window_start, window_end, median_speed,
+                                                    median_qscore))
+        window_start += time_window
+        window_end += time_window
+
     # TODO: draw an ASCII plot showing the mean translocation speeds for time windows
 
 
-def barcode_distribution_summary():
-    pass
-    # TODO: read through sequencing_summary.txt file, getting the following for each read:
-    #       sequence_length_template, barcode_arrangement
+def get_run_start_time(run_id, fast5s):
+    def get_run_id(_, node):
+        try:
+            return node.attrs['run_id'].decode()
+        except (AttributeError, KeyError):
+            pass
+
+    def get_exp_start_time(_, node):
+        try:
+            return node.attrs['exp_start_time'].decode()
+        except (AttributeError, KeyError):
+            pass
+
+    for fast5 in fast5s:
+        f = h5py.File(fast5, 'r')
+        fast5_run_id = f.visititems(get_run_id)
+        if run_id == fast5_run_id:
+            exp_start_time = f.visititems(get_exp_start_time)
+            return dateutil.parser.parse(exp_start_time)
+        f.close()
+
+    print('WARNING: could not find exp_start_time in fast5')
+    return datetime.datetime.now()
+
+
+def barcode_distribution_summary(out_dir, barcode_kit):
+    print('\n\n\n')
+    print('BARCODE DISTRIBUTION')
+    print('------------------------------------------------------------')
+    barcode_data = read_sequencing_summary(out_dir, ['sequence_length_template',
+                                                     'barcode_arrangement'])
+    first_barcode = int(barcode_kit.split('_')[-1].split('-')[0])
+    last_barcode = int(barcode_kit.split('_')[-1].split('-')[1])
+    barcode_names = ['barcode{:02}'.format(i) for i in range(first_barcode, last_barcode + 1)]
+    barcode_names.append('unclassified')
+    totals = {name: 0 for name in barcode_names}
+    for length, name in barcode_data:
+        length = int(length)
+        totals[name] += length
+    overall_total = sum(totals.values())
+    n50s = {}
+    for name in barcode_names:
+        n50s[name] = get_n50([int(x[0]) for x in barcode_data if x[1] == name])
+
+    max_total_len = max(len('{:,}'.format(t)) for t in totals.values())
+    total_format_str = '{:' + str(max_total_len) + ',} bp'
+
+    for name in barcode_names:
+        row = (name + ':').ljust(14)
+        row += total_format_str.format(totals[name])
+        row += ' {:.2f}%'.format(100.0 * totals[name] / overall_total).rjust(9)
+        if n50s[name]:
+            row += '   N50 = {:6,} bp'.format(n50s[name])
+        print(row)
+
+        # print(format_str.format(name, totals[name], 100.0 * totals[name] / overall_total))
+    print()
     # TODO: for each barcode, draw an ASCII bar plot for the number of bases and the N50 read size
-    # TODO: print the classified vs unclassified ratio
 
 
-def overall_summary():
-    pass
-    # TODO: read through sequencing_summary.txt file, getting the following for each read:
-    #       sequence_length_template
-    # TODO: print the number of reads, total bases and N50 read length
+def overall_summary(out_dir):
+    print('\n\n\n')
+    print('TOTALS')
+    print('------------------------------------------------------------')
+    sequence_lengths = read_sequencing_summary(out_dir, ['sequence_length_template'])
+    sequence_lengths = [int(x[0]) for x in sequence_lengths]
+    num_reads = len(sequence_lengths)
+    total_bases = sum(sequence_lengths)
+    n50 = get_n50(sequence_lengths)
+    print('Number of reads: {:14,}'.format(num_reads))
+    print('Total bases:     {:14,}'.format(total_bases))
+    print('Read N50:        {:14,}'.format(n50))
+    print()
+
+
+def get_n50(sequence_lengths):
+    sequence_lengths = sorted(sequence_lengths, reverse=True)
+    total_bases = sum(sequence_lengths)
+    target_bases = total_bases * 0.5
+    bases_so_far = 0
+    for sequence_length in sequence_lengths:
+        bases_so_far += sequence_length
+        if bases_so_far >= target_bases:
+            return sequence_length
+    return 0
+
+
+def read_sequencing_summary(out_dir, columns):
+    summary_filename = str(out_dir / 'sequencing_summary.txt')
+    with open(summary_filename, 'rt') as summary:
+        headers = summary.readline().strip().split('\t')
+    column_numbers = [headers.index(x) for x in columns]
+    data = []
+    with open(summary_filename, 'rt') as summary:
+        for line in summary:
+            if line.startswith('filename'):
+                continue
+            parts = line.strip().split('\t')
+            data.append([parts[i] for i in column_numbers])
+    return data
 
 
 def get_guppy_command(in_dir, out_dir, barcodes, model, cpu):
