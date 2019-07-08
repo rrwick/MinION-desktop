@@ -23,6 +23,10 @@ It needs to be run with the input directory (where fast5s are deposited), an out
 basecall.py -i fast5 -o fastq --barcodes native_1-12 --model r9.4_hac
 ```
 
+It needs a couple of external packages to run: [dateutil](https://pypi.org/project/python-dateutil/) and [h5py](https://pypi.org/project/h5py/).
+
+
+
 
 ### fast_count
 
