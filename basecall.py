@@ -48,7 +48,7 @@ BASECALLING = collections.OrderedDict([
 BARCODING = collections.OrderedDict([
     ('native_1-12',  ['--barcode_kits', 'EXP-NBD104', '--trim_barcodes']),
     ('native_13-24', ['--barcode_kits', 'EXP-NBD114', '--trim_barcodes']),
-    ('native_1-24',  ['--barcode_kits', '"EXP-NBD104 EXP-NBD114"', '--trim_barcodes']),
+    ('native_1-24',  ['--barcode_kits', 'EXP-NBD104 EXP-NBD114', '--trim_barcodes']),
     ('rapid_1-12',   ['--barcode_kits', 'SQK-RBK004', '--trim_barcodes']),
     ('none',         [])
 ])
@@ -550,20 +550,16 @@ def get_destination_filename(barcodes, out_dir, source_filename):
 
 
 def merge_fastq(source_filename, destination_filename):
-    # print('Merging contents of {} into {}'.format(source_filename, destination_filename))
-    destination_filename = str(destination_filename)  # path to str
-    with open(source_filename, 'rt') as source:
-        with open(destination_filename, 'at') as destination:
+    with open(str(source_filename), 'rt') as source:
+        with open(str(destination_filename), 'at') as destination:
             for line in source:
                 destination.write(line)
 
 
 def merge_summary(source_filename, destination_filename):
-    # print('Merging contents of {} into {}'.format(source_filename, destination_filename))
     include_header = not destination_filename.is_file()
-    destination_filename = str(destination_filename)  # path to str
-    with open(source_filename, 'rt') as source:
-        with open(destination_filename, 'at') as destination:
+    with open(str(source_filename), 'rt') as source:
+        with open(str(destination_filename), 'at') as destination:
             for line in source:
                 if not include_header and line.startswith('filename'):
                     continue
