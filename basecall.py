@@ -25,6 +25,7 @@ import dateutil.parser
 import h5py
 import os
 import pathlib
+import random
 import re
 import shutil
 import statistics
@@ -101,10 +102,10 @@ def main():
                 print_stop_message(args.stop_time)
                 break
 
-            new_fast5s = check_for_reads(args.batch_size, args.in_dir, args.out_dir)
+            new_fast5s, all_fast5s = check_for_reads(args.batch_size, args.in_dir, args.out_dir)
             if new_fast5s:
                 basecall_reads(new_fast5s, args.barcodes, args.model, args.cpu, args.out_dir)
-                print_summary_info(args.out_dir, args.barcodes, new_fast5s, args.trans_window)
+                print_summary_info(args.out_dir, args.barcodes, all_fast5s, args.trans_window)
                 minutes_since_last_read, waiting = 0.0, False
 
             else:  # no new reads
@@ -143,10 +144,10 @@ def check_arguments(args):
 
 
 def check_for_reads(batch_size, in_dir, out_dir):
-    fast5_files = [x.resolve() for x in in_dir.glob('**/*.fast5')]
+    all_fast5_files = [x.resolve() for x in in_dir.glob('**/*.fast5')]
     already_basecalled = load_already_basecalled(out_dir)
-    fast5_files = [f for f in fast5_files if f.name not in already_basecalled]
-    return sorted(f for f in fast5_files)[:batch_size]
+    new_fast5_files = [f for f in all_fast5_files if f.name not in already_basecalled]
+    return sorted(f for f in new_fast5_files)[:batch_size], all_fast5_files
 
 
 def load_already_basecalled(out_dir):
@@ -207,21 +208,21 @@ def copy_reads_to_temp_in(new_fast5s, temp_in):
     print()
 
 
-def print_summary_info(out_dir, barcodes, new_fast5s, trans_window):
-    translocation_speed_summary(out_dir, new_fast5s, trans_window)
+def print_summary_info(out_dir, barcodes, all_fast5s, trans_window):
+    translocation_speed_summary(out_dir, all_fast5s, trans_window)
     if barcodes != 'none':
         barcode_distribution_summary(out_dir, barcodes)
     overall_summary(out_dir)
 
 
-def translocation_speed_summary(out_dir, new_fast5s, time_window):
+def translocation_speed_summary(out_dir, all_fast5s, time_window):
     print('\n\n\n')
     print('TRANSLOCATION SPEED')
     print('------------------------------------------------------------')
     data = read_sequencing_summary(out_dir, ['run_id', 'start_time', 'duration',
                                              'sequence_length_template', 'mean_qscore_template'])
     run_ids = set(x[0] for x in data)
-    run_start_times = {r: get_run_start_time(r, new_fast5s) for r in run_ids}
+    run_start_times = {r: get_run_start_time(r, all_fast5s) for r in run_ids}
     earliest_start_time = min(run_start_times.values())
     read_trans_speeds = []
     max_time = 0.0
@@ -257,6 +258,7 @@ def translocation_speed_summary(out_dir, new_fast5s, time_window):
 
 
 def get_run_start_time(run_id, fast5s):
+    random.shuffle(fast5s)  # in case the ones we need are at the end
     def get_run_id(_, node):
         try:
             return node.attrs['run_id'].decode()
