@@ -40,8 +40,8 @@ BASECALLING = collections.OrderedDict([
     ('r9.4_hac',  ['--config', 'dna_r9.4.1_450bps_hac.cfg']),
     ('r9.4_kp',   ['--config', 'dna_r9.4.1_450bps_hac.cfg',
                    '--model',  'holtlab_kp_large_flipflop_r9.4_r9.4.1_apr_2019.jsn']),
-    ('r10_fast',  ['--config', 'TBA']),
-    ('r10_hac',   ['--config', 'TBA']),
+    ('r10_fast',  ['--config', 'dna_r10_450bps_fast.cfg']),
+    ('r10_hac',   ['--config', 'dna_r10_450bps_hac.cfg']),
     ('r10_kp',    ['--config', 'TBA',
                    '--model',  'TBA'])
 ])
@@ -105,7 +105,7 @@ def main():
             new_fast5s, all_fast5s = check_for_reads(args.batch_size, args.in_dir, args.out_dir)
             if new_fast5s:
                 basecall_reads(new_fast5s, args.barcodes, args.model, args.cpu, args.out_dir)
-                print_summary_info(args.out_dir, args.barcodes, all_fast5s, args.trans_window)
+                summary_info(args.out_dir, args.barcodes, all_fast5s, args.trans_window)
                 minutes_since_last_read, waiting = 0.0, False
 
             else:  # no new reads
@@ -208,7 +208,7 @@ def copy_reads_to_temp_in(new_fast5s, temp_in):
     print()
 
 
-def print_summary_info(out_dir, barcodes, all_fast5s, trans_window):
+def summary_info(out_dir, barcodes, all_fast5s, trans_window):
     translocation_speed_summary(out_dir, all_fast5s, trans_window)
     if barcodes != 'none':
         barcode_distribution_summary(out_dir, barcodes)
@@ -235,26 +235,31 @@ def translocation_speed_summary(out_dir, all_fast5s, time_window):
         max_time = max(max_time, read_time)
         read_trans_speeds.append((read_time, trans_speed, qscore))
 
-    print('Time window     Speed    Qscore')
-    window_start, window_end = 0, time_window
-    while window_start < max_time:
-        window_data = [x for x in read_trans_speeds if window_start <= x[0] < window_end]
-        window_count = len(window_data)
+    with open(str(out_dir / 'translocation_speed.tsv'), 'wt') as trans_speed_file:
+        print('Time window     Speed    Qscore')
+        trans_speed_file.write('minute_window_start\tminute_window_end\t'
+                               'translocation_speed\tmean_qscore\n')
+        window_start, window_end = 0, time_window
+        while window_start < max_time:
+            window_data = [x for x in read_trans_speeds if window_start <= x[0] < window_end]
+            window_count = len(window_data)
 
-        if window_count > 0:
-            median_speed = statistics.median([x[1] for x in window_data])
-            median_speed = '{:5.1f}'.format(median_speed)
-            median_qscore = statistics.median([x[2] for x in window_data])
-            median_qscore = '{:4.1f}'.format(median_qscore)
-        else:
-            median_speed, median_qscore = '', ''
+            if window_count > 0:
+                median_speed = statistics.median([x[1] for x in window_data])
+                median_speed = '{:5.1f}'.format(median_speed)
+                median_qscore = statistics.median([x[2] for x in window_data])
+                median_qscore = '{:4.1f}'.format(median_qscore)
+            else:
+                median_speed, median_qscore = '', ''
 
-        print('{:4d} - {:4d}     {}      {}'.format(window_start, window_end, median_speed,
-                                                    median_qscore))
-        window_start += time_window
-        window_end += time_window
+            print('{:4d} - {:4d}     {}      {}'.format(window_start, window_end,
+                                                        median_speed, median_qscore))
+            trans_speed_file.write('{}\t{}\t{}\t{}\n'.format(window_start, window_end,
+                                                             median_speed, median_qscore))
+            window_start += time_window
+            window_end += time_window
 
-    # TODO: draw an ASCII plot showing the mean translocation speeds for time windows
+    # TODO: draw an ASCII plot showing the mean translocation speeds for time windows?
 
 
 def get_run_start_time(run_id, fast5s):
@@ -293,29 +298,35 @@ def barcode_distribution_summary(out_dir, barcode_kit):
     last_barcode = int(barcode_kit.split('_')[-1].split('-')[1])
     barcode_names = ['barcode{:02}'.format(i) for i in range(first_barcode, last_barcode + 1)]
     barcode_names.append('unclassified')
-    totals = {name: 0 for name in barcode_names}
+    bases = {name: 0 for name in barcode_names}
+    reads = {name: 0 for name in barcode_names}
     for length, name in barcode_data:
         length = int(length)
-        totals[name] += length
-    overall_total = sum(totals.values())
+        bases[name] += length
+        reads[name] += 1
+    overall_total = sum(bases.values())
     n50s = {}
     for name in barcode_names:
         n50s[name] = get_n50([int(x[0]) for x in barcode_data if x[1] == name])
 
-    max_total_len = max(len('{:,}'.format(t)) for t in totals.values())
+    max_total_len = max(len('{:,}'.format(t)) for t in bases.values())
     total_format_str = '{:' + str(max_total_len) + ',} bp'
 
-    for name in barcode_names:
-        row = (name + ':').ljust(14)
-        row += total_format_str.format(totals[name])
-        row += ' {:.2f}%'.format(100.0 * totals[name] / overall_total).rjust(9)
-        if n50s[name]:
-            row += '   N50 = {:6,} bp'.format(n50s[name])
-        print(row)
-
-        # print(format_str.format(name, totals[name], 100.0 * totals[name] / overall_total))
+    with open(str(out_dir / 'barcode_distribution.tsv'), 'wt') as barcode_file:
+        barcode_file.write('barcode\treads\tbases\tbases_percent\tN50\n')
+        for name in barcode_names:
+            row = (name + ':').ljust(14)
+            row += total_format_str.format(bases[name])
+            bases_percent = 100.0 * bases[name] / overall_total
+            row += ' {:.2f}%'.format(bases_percent).rjust(9)
+            if n50s[name]:
+                row += '   N50 = {:6,} bp'.format(n50s[name])
+            print(row)
+            barcode_file.write('{}\t{}\t{}\t{:.2f}\t{}\n'.format(name, reads[name], bases[name],
+                                                                 bases_percent, n50s[name]))
     print()
-    # TODO: for each barcode, draw an ASCII bar plot for the number of bases and the N50 read size
+
+    # TODO: for each barcode, draw an ASCII bar plot for the number of bases and the N50 read size?
 
 
 def overall_summary(out_dir):
