@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 
 
 BASECALLING = collections.OrderedDict([
@@ -203,7 +204,14 @@ def copy_reads_to_temp_in(new_fast5s, temp_in):
     plural = '' if len(new_fast5s) == 1 else 's'
     print('Read{} to be basecalled:'.format(plural))
     for f in new_fast5s:
-        shutil.copy(str(f), str(temp_in))
+
+        # Make sure that we aren't overwriting files in the temp directory. If so, give the new
+        # file a unique name.
+        new_path = temp_in / f.name
+        while new_path.is_file():
+            new_path = temp_in / (str(uuid.uuid4()) + '.fast5')
+
+        shutil.copy(str(f), str(new_path))
         print('    {}'.format(str(f)))
     print()
 
