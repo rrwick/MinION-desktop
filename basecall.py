@@ -39,6 +39,7 @@ import uuid
 BASECALLING = collections.OrderedDict([
     ('r9.4_fast', ['--config', 'dna_r9.4.1_450bps_fast.cfg']),
     ('r9.4_hac',  ['--config', 'dna_r9.4.1_450bps_hac.cfg']),
+    ('r9.4_mod',  ['--config', 'dna_r9.4.1_450bps_modbases_dam-dcm-cpg_hac.cfg']),
     ('r9.4_kp',   ['--config', 'dna_r9.4.1_450bps_hac.cfg',
                    '--model',  'holtlab_kp_large_flipflop_r9.4_r9.4.1_apr_2019.jsn']),
     ('r10_fast',  ['--config', 'dna_r10_450bps_fast.cfg']),
