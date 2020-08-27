@@ -30,9 +30,11 @@ It needs a couple of external packages to run: [dateutil](https://pypi.org/proje
 
 ### fast_count
 
-This is a little C program that reports some basic stats on a fastq/fasta file: the number of reads, the total size (in bp) and the N50 size. I threw it together using [this example](https://bioinformatics.stackexchange.com/a/937) as a starting point. Because it uses the wonderful [kseq.h](http://attractivechaos.github.io/klib/#Kseq%3A%20stream%20buffer%20and%20FASTA%2FQ%20parser) header file, it's very fast.
+This is a little C program that reports some basic stats on a fastq/fasta file: the number of reads, the total size (in bp) and read length metrics: N99, N90, N50, N10 and N01 lengths. I threw it together using [this example](https://bioinformatics.stackexchange.com/a/937) as a starting point. Because it uses the wonderful [kseq.h](http://attractivechaos.github.io/klib/#Kseq%3A%20stream%20buffer%20and%20FASTA%2FQ%20parser) header file, it's very fast.
 
 To build it, just run `make` in this repo's directory.
+
+Run it with no arguments to make it print the tab-delimited header. Run it with fasta or fastq arguments to get the stats. Multiple input files are fine – each will get a single line of output.
 
 
 
