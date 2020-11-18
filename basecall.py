@@ -52,6 +52,7 @@ BARCODING = collections.OrderedDict([
     ('native_1-12',  ['--barcode_kits', 'EXP-NBD104', '--trim_barcodes']),
     ('native_13-24', ['--barcode_kits', 'EXP-NBD114', '--trim_barcodes']),
     ('native_1-24',  ['--barcode_kits', 'EXP-NBD104 EXP-NBD114', '--trim_barcodes']),
+    ('native_1-96',  ['--barcode_kits', 'EXP-NBD196', '--trim_barcodes']),
     ('rapid_1-12',   ['--barcode_kits', 'SQK-RBK004', '--trim_barcodes']),
     ('none',         [])
 ])
